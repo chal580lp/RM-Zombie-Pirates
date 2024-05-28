@@ -1,22 +1,28 @@
 package com.runemate.common
 
 import com.runemate.game.api.hybrid.local.hud.interfaces.Equipment
+import java.util.regex.Pattern
 
 data class EquipmentItem(
-    val name : String,
-    val id : Int,
-    val tradeable : Boolean
+    val name: Pattern,
+    val id: Int,
+    val tradeable: Boolean
 )
+
 class EquipmentManager {
-    val equipment : MutableList<EquipmentItem> = mutableListOf()
-    val slots = 14
+    val equipment: MutableList<EquipmentItem> = mutableListOf()
 
     fun setEquipment() {
         val items = Equipment.getItems()
             .filter { it.definition?.name != null }
             .groupBy { it.definition!!.name }
             .map { (name, items) ->
-                EquipmentItem(name, items.first().id, items.first().definition?.isTradeable == true)
+                val regexName = if (name.contains("\\(\\d+\\)".toRegex())) {
+                    name.replace("\\(\\d+\\)".toRegex(), "\\(.*\\)")
+                } else {
+                    name
+                }
+                EquipmentItem(Pattern.compile(regexName), items.first().id, items.first().definition?.isTradeable == true)
             }
 
         equipment.clear()
@@ -29,6 +35,6 @@ class EquipmentManager {
         }
     }
     fun isChargedItem(item: EquipmentItem): Boolean {
-        return ChargedItem.fromItemName(item.name) != null
+        return ChargedItem.fromItemName(item.name.pattern()) != null
     }
 }

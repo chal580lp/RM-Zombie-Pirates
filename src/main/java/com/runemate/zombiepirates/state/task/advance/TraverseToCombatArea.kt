@@ -39,7 +39,7 @@ class TraverseToCombatArea : Task {
         }
 
         if (path == null) {
-            path = Traverse.getPathDestination(coordinate, false, pathCache)
+            path = Traverse.getPathDestination(coordinate, false)
         }
 
         path?.step()

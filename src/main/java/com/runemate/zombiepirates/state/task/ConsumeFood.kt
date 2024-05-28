@@ -4,6 +4,7 @@ import com.runemate.common.DI
 import com.runemate.common.state.Task
 import com.runemate.common.state.di.injected
 import com.runemate.game.api.hybrid.input.direct.MenuAction
+import com.runemate.game.api.hybrid.local.Wilderness
 import com.runemate.game.api.hybrid.local.hud.interfaces.Health
 import com.runemate.game.api.hybrid.local.hud.interfaces.Inventory
 import com.runemate.game.api.script.Execution
@@ -15,7 +16,7 @@ class ConsumeFood : Task {
     val bot : Bot by injected()
 
     override fun validate(): Boolean {
-        return Health.getMaximum() - Health.getCurrent() >= BotConfig.foodHeal
+        return Wilderness.isInWilderness() && Health.getMaximum() - Health.getCurrent() >= BotConfig.lowHealthThreshold
     }
 
     override fun execute() {
@@ -24,7 +25,9 @@ class ConsumeFood : Task {
             .names(BotConfig.food)
             .actions("Eat")
             .results()
-            .first()?.let { DI.send(MenuAction.forSpriteItem(it,"Eat"))
+            .first()?.let {
+                it.interact("Eat")
+                //DI.send(MenuAction.forSpriteItem(it,"Eat"))
                 Execution.delayWhile(it::isValid, 600, 1200)}
 
     }

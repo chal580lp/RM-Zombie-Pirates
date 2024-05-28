@@ -9,6 +9,7 @@ import com.runemate.zombiepirates.Bot
 import com.runemate.zombiepirates.state.task.bank.BankLoot
 import com.runemate.zombiepirates.state.task.bank.OpenBank
 import com.runemate.zombiepirates.state.task.bank.WithdrawSupplies
+import com.runemate.zombiepirates.state.task.retreat.PoolOfRefreshment
 
 class Bank : TaskState() {
 
@@ -26,6 +27,7 @@ class Bank : TaskState() {
     }
 
     override fun defineTasks() {
+        addTask(PoolOfRefreshment())
         addTask(OpenBank())
         addTask(BankLoot())
         addTask(WithdrawSupplies())
@@ -33,6 +35,6 @@ class Bank : TaskState() {
 
     override fun onStart() {
         DefaultUI.setStatus("Banking")
-        log.debug("TaskState: Bank")
+        //log.debug("TaskState: Bank")
     }
 }

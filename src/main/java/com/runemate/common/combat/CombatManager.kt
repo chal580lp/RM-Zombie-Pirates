@@ -5,6 +5,7 @@ import com.runemate.game.api.hybrid.entities.Npc
 import com.runemate.game.api.hybrid.input.direct.MenuAction
 import com.runemate.game.api.hybrid.local.Camera
 import com.runemate.game.api.hybrid.location.Area
+import com.runemate.game.api.hybrid.location.navigation.cognizant.ScenePath
 import com.runemate.game.api.hybrid.queries.NpcQueryBuilder
 import com.runemate.game.api.hybrid.region.Npcs
 import com.runemate.game.api.hybrid.region.Players
@@ -38,6 +39,10 @@ fun ICombatManager.isTargetNotValid() = targetNpc?.isValid == false
 
 fun ICombatManager.isTargetNotNull() = targetNpc !== null
 
+fun ICombatManager.isTargetNullOrNotValid() = isTargetNull() || isTargetNotValid()
+
+fun ICombatManager.isTargetDying() = targetNpc?.healthGauge?.percent == 0
+
 fun ICombatManager.inCombatArea() = combatArea.contains(Players.getLocal())
 
 fun ICombatManager.inCombat(): Boolean {
@@ -68,6 +73,12 @@ fun ICombatManager.getClosestNonInteracting() = npcQuery
     .results()
     .nearest()
 
+fun ICombatManager.getClosestByScenePath(): Npc? {
+    val path = ScenePath.buildTo(npcQuery.results()) ?: return null
+    val nearest = Npcs.getLoadedOn(path.last?.position).first()
+    return nearest
+}
+
 class CombatManager(
     override val combatArea: Area,
     override val npcNames: List<String>
@@ -81,13 +92,15 @@ class CombatManager(
             .names(Regex.getPatternsForContainsStrings(npcNames.joinToString(".")))
             .filter { it.isValid }
             .filter { combatArea.contains(it) }
-            .filter { it.healthGauge?.percent != 0}
+            .filter { it.healthGauge?.percent != 0 || it.healthGauge == null }
             .reachable()
 
     override fun resetTargetNpc() {
         println("Reset target npc")
         targetNpc = null
     }
+
+
 
     override fun setNewTargetNpc() {
         println("Setting new target npc")
@@ -111,7 +124,7 @@ class CombatManager(
 //        }
 
         // If no directly interacting npcs match, find the closest npc that matches the criteria
-        val closestMachingNpc = getClosestNonInteracting()
+        val closestMachingNpc = getClosestByScenePath() ?: getClosestNonInteracting()
 
         targetNpc = if (closestMachingNpc !== null) {
             closestMachingNpc
@@ -138,7 +151,8 @@ class CombatManager(
             Execution.delayUntil({targetNpc?.isVisible == true }, 1000);
         }
 
-        if (!DI.send(MenuAction.forNpc(targetNpc!!, attackOption))) return false
+        //if (!DI.send(MenuAction.forNpc(targetNpc!!, attackOption))) return false
+        if (targetNpc?.interact(attackOption) == false) return false
 
 
         //return //Execution.delayUntil({ inCombat() }, 1200)&& !targetNpc?.hitsplats.isNullOrEmpty()

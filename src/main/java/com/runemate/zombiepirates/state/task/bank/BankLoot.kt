@@ -3,6 +3,7 @@ package com.runemate.zombiepirates.state.task.bank
 import com.runemate.common.DI
 import com.runemate.common.state.Task
 import com.runemate.common.state.di.injected
+import com.runemate.game.api.hybrid.RuneScape
 import com.runemate.game.api.hybrid.input.direct.MenuAction
 import com.runemate.game.api.hybrid.local.hud.interfaces.Bank
 import com.runemate.game.api.hybrid.local.hud.interfaces.Interfaces
@@ -11,6 +12,7 @@ import com.runemate.game.api.osrs.local.hud.interfaces.LootingBag
 import com.runemate.game.api.script.Execution
 import com.runemate.zombiepirates.Bot
 import com.runemate.zombiepirates.getBankManager
+import com.runemate.zombiepirates.getInventoryManager
 
 class BankLoot : Task {
 

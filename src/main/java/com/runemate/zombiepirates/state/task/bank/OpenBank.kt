@@ -11,7 +11,6 @@ class OpenBank : Task {
     }
 
     override fun execute() {
-        DefaultUI.setStatus("Opening Bank")
         Bank.open()
         //Wait until bank is open or timeout.
         Execution.delayUntil({Bank.isOpen() }, 2500)

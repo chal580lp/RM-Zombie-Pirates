@@ -2,7 +2,9 @@ package com.runemate.zombiepirates.state
 
 import com.runemate.common.RMLogger
 import com.runemate.common.state.GenericTransition
+import com.runemate.common.state.GlobalTaskManager
 import com.runemate.common.state.TaskState
+import com.runemate.common.state.di.injected
 import com.runemate.game.api.hybrid.local.Wilderness
 import com.runemate.ui.DefaultUI
 import com.runemate.zombiepirates.state.task.retreat.TraverseToSafezone
@@ -10,6 +12,7 @@ import com.runemate.zombiepirates.state.task.retreat.TraverseToSafezone
 class AntiPk : TaskState() {
 
     private val log: RMLogger = RMLogger.getLogger(this::class.java)
+    override val globalTaskManager: GlobalTaskManager by injected()
 
     init {
         checkGlobalTasks = true
@@ -32,6 +35,6 @@ class AntiPk : TaskState() {
 
     override fun onStart() {
         DefaultUI.setStatus("AntiPk Handler")
-        log.debug("TaskState: AntiPk")
+        //log.debug("TaskState: AntiPk")
     }
 }

@@ -1,10 +1,8 @@
 package com.runemate.common.loot
 
-import com.runemate.common.DI
 import com.runemate.common.RMLogger
 import com.runemate.game.api.hybrid.entities.GroundItem
-import com.runemate.game.api.hybrid.input.direct.MenuAction
-import com.runemate.game.api.hybrid.input.direct.MenuOpcode
+import com.runemate.game.api.hybrid.local.Camera
 import com.runemate.game.api.hybrid.local.hud.interfaces.Inventory
 import com.runemate.game.api.hybrid.location.Area
 import com.runemate.game.api.hybrid.net.GrandExchange
@@ -25,6 +23,12 @@ class LootManager(private val lootArea: Area) {
 
     private var priceMap = mutableMapOf(995 to 1)
     private var minPrice = 4000
+    var lootOwnKills: Boolean = true // New variable to indicate if only own kills should be looted
+
+
+    init {
+        priceMap[995] = 1
+    }
 
     val shouldLoot
         get() =
@@ -35,7 +39,9 @@ class LootManager(private val lootArea: Area) {
             GroundItems.newQuery()
                 .within(lootArea)
                 .reachable()
+                .filter { !lootOwnKills || it.ownership != GroundItem.Ownership.GROUP }
                 .filter { isPriceValid(it) }
+
     private fun isPriceValid(item: GroundItem): Boolean {
         if (item.definition?.name == "Looting bag") return true
 
@@ -45,27 +51,33 @@ class LootManager(private val lootArea: Area) {
         if (minPrice == 0) {
             return true
         }
-        log.debug("Debug: minPrice is $minPrice")
+
+        // Check and use cached price
         val cachedPrice = priceMap[unnotedId]
         if (cachedPrice != null) {
-            log.debug("Using cached price for ${item.definition!!.name}: $cachedPrice")
             return cachedPrice * item.quantity >= minPrice
         }
 
+        // Perform price lookup if not cached
+        val gePrice = lookupAndCachePrice(unnotedId, item.definition!!.name)
+        return gePrice * item.quantity >= minPrice
+    }
+
+    private fun lookupAndCachePrice(unnotedId: Int, itemName: String): Int {
         val gePrice = GrandExchange.lookup(unnotedId)?.price
         if (gePrice != null) {
-            log.debug("Determined price of ${item.definition!!.name} to be $gePrice")
+            log.debug("Determined price of $itemName to be $gePrice")
             priceMap[unnotedId] = gePrice
-            return gePrice * item.quantity >= minPrice
+            return gePrice
         } else {
-            log.debug("${item.definition!!.name} returned an error when fetching the price, setting price to 1 gp")
+            log.debug("$itemName returned an error when fetching the price, setting price to 1 gp")
             priceMap[unnotedId] = 1
-            return false
+            return 1
         }
     }
     fun manageLooting(): List<LootItem> {
         if (!shouldLoot) return emptyList()
-        return lootDI()
+        return loot()
     }
 
     private fun isAnyLoot() = lootQuery.results().any()
@@ -77,7 +89,8 @@ class LootManager(private val lootArea: Area) {
     }
     private fun removeFoodOrJunk() {
         val item = Inventory.newQuery().actions("Eat").results().first() ?: return
-        DI.send(MenuAction.forSpriteItem(item,"Eat"))
+        //DI.send(MenuAction.forSpriteItem(item,"Eat"))
+        item.interact("Eat")
         Execution.delayUntil({ !item.isValid },600)
     }
 
@@ -90,20 +103,20 @@ class LootManager(private val lootArea: Area) {
     private fun openLootingBag() {
         log.debug("Opening looting bag")
         val lootingBag = Inventory.getItems(11941).first() ?: return
-        DI.send(MenuAction.forSpriteItem(lootingBag, "Open"))
+        //DI.send(MenuAction.forSpriteItem(lootingBag, "Open"))
+        lootingBag.interact("Open")
         Execution.delayUntil({ lootingBag.id != 11941}, 600)
     }
 
-    private fun lootDI(): List<LootItem> {
+    private fun loot(): List<LootItem> {
         val lootItems = getAllLoot()
         if (lootItems.isEmpty() || (Inventory.isFull() && !foodOrJunk())) return emptyList()
 
-        log.debug("Looting ${lootItems.joinToString ( ", " ) { it.definition?.name ?: "Null" }}")
+        log.debug("Looting ${lootItems.joinToString ( ", " ) { (it.definition?.name + it.ownership)}}")
 
         val lootedItems = mutableListOf<LootItem>()
         DefaultUI.setStatus("Attempting to loot")
         for (item: GroundItem in lootItems) {
-
             if (hasLootingBag() && isLootingBagClosed()) {
                 openLootingBag()
             }
@@ -113,7 +126,13 @@ class LootManager(private val lootArea: Area) {
             }
 
             //val inventoryBefore = Inventory. { it.stack }
-            if (!DI.send(MenuAction.forGroundItem(item,MenuOpcode.GROUND_ITEM_THIRD_OPTION) )) continue
+            //if (!DI.send(MenuAction.forGroundItem(item,MenuOpcode.GROUND_ITEM_THIRD_OPTION) )) continue
+            if (!item.isVisible) {
+                //Camera.turnTo(targetNpc)
+                Camera.concurrentlyTurnTo(item)
+                Execution.delayUntil({ item.isVisible }, 1000);
+            }
+            if (!item.take()) continue
             if (Execution.delayUntil( { !item.isValid }, 2000 )) continue
 
             val lootItem = LootItem(

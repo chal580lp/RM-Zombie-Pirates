@@ -2,7 +2,9 @@ package com.runemate.zombiepirates.state
 
 import com.runemate.common.RMLogger
 import com.runemate.common.state.GenericTransition
+import com.runemate.common.state.GlobalTaskManager
 import com.runemate.common.state.TaskState
+import com.runemate.common.state.di.injected
 import com.runemate.common.util
 import com.runemate.game.api.hybrid.local.Wilderness
 import com.runemate.ui.DefaultUI
@@ -13,6 +15,7 @@ import com.runemate.zombiepirates.state.task.retreat.TraverseToSafezone
 
 class Retreat : TaskState() {
     private val log: RMLogger = RMLogger.getLogger(this::class.java)
+    override val globalTaskManager: GlobalTaskManager by injected()
 
     init {
         checkGlobalTasks = true
@@ -30,12 +33,11 @@ class Retreat : TaskState() {
     override fun defineTasks() {
         addTask(TeleportOut())
         addTask(TraverseToSafezone())
-        addTask(PoolOfRefreshment())
         addTask(TraverseToBank())
     }
 
     override fun onStart() {
         DefaultUI.setStatus("Traversing to Bank")
-        log.debug("TaskState: Retreat")
+        //log.debug("TaskState: Retreat")
     }
 }

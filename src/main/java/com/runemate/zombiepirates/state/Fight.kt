@@ -3,6 +3,7 @@ package com.runemate.zombiepirates.state
 import com.runemate.common.RMLogger
 import com.runemate.common.combat.inCombatArea
 import com.runemate.common.state.GenericTransition
+import com.runemate.common.state.GlobalTaskManager
 import com.runemate.common.state.TaskState
 import com.runemate.common.state.di.injected
 import com.runemate.game.api.hybrid.region.Players
@@ -17,6 +18,7 @@ import com.runemate.zombiepirates.state.task.fight.Loot
 class Fight : TaskState() {
 
     private val log: RMLogger = RMLogger.getLogger(this::class.java)
+    override val globalTaskManager: GlobalTaskManager by injected()
 
     val bot: Bot by injected()
 
@@ -49,7 +51,7 @@ class Fight : TaskState() {
 
     override fun onStart() {
         DefaultUI.setStatus("Killing Pirate Zombies")
-        log.debug("TaskState: Fight")
+        //log.debug("TaskState: Fight")
     }
 }
 

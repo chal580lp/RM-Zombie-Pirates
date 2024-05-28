@@ -12,8 +12,6 @@ class AttackNpc : Task {
 
     val bot : Bot by injected()
 
-    private val player: Player? = Players.getLocal()
-
     override fun validate(): Boolean {
         val target = bot.getCombatManager().targetNpc
         if ((target?.healthGauge != null && target.healthGauge?.percent!! > 0) && Players.getLocal()?.target != null) {

@@ -38,13 +38,12 @@ class TraverseToSafezone : Task {
     }
 
     override fun execute() {
-        DefaultUI.setStatus("Traversing to outside Wilderness")
         if (!isTeleblocked()) {
             //ferox tp
             return
         }
         for (coord in path2safe) {
-            if (coord.y >= (Players.getLocal()?.serverPosition?.y ?: return)) continue
+            if (coord.y + 4 >= (Players.getLocal()?.serverPosition?.y ?: return)) continue
             val path = ScenePath.buildTo(coord)
             if (path != null) {
                 path.step()
@@ -57,11 +56,9 @@ class TraverseToSafezone : Task {
                 path.step()
             }
         } else {
-            if (path == null) path = Traverse.getPathDestination(safeSpot, false, pathCache)
+            if (path == null) path = Traverse.getPathDestination(safeSpot, false)
             if (Wilderness.isInWilderness()) {
-                println("Stepping")
                 path?.step()
-                println("Stepped")
             }
         }
 

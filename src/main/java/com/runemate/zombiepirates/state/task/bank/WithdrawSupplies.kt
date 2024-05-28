@@ -19,9 +19,9 @@ class WithdrawSupplies : Task {
 
     override fun execute() {
         DefaultUI.setStatus("Withdrawing supplies")
-        Bank.depositInventory()
-        bot.getEquipmentManager().let { bot.getBankManager().checkAndEquipItems(it) }
-        bot.getInventoryManager().let { bot.getBankManager().withdrawInventory(it) } // Withdraw inventory
+        if (bot.getBankManager().shouldDepositInventory(bot.getInventoryManager())) Bank.depositInventory()
+        bot.getBankManager().checkAndEquipItems(bot.getEquipmentManager())
+        bot.getBankManager().withdrawInventory(bot.getInventoryManager().inventory)
         Bank.close()
     }
 }

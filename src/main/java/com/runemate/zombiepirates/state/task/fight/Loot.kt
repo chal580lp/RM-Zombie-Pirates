@@ -8,7 +8,7 @@ import com.runemate.zombiepirates.getLootManager
 class Loot : Task {
     val bot : Bot by injected()
     override fun validate(): Boolean {
-        return bot.getLootManager().shouldLoot ?: false
+        return bot.getLootManager().shouldLoot
     }
 
     override fun execute() {

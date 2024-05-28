@@ -5,9 +5,8 @@ import com.runemate.common.combat.inCombatArea
 import com.runemate.common.state.di.injected
 import com.runemate.common.state.GenericTransition
 import com.runemate.common.state.TaskState
-import com.runemate.zombiepirates.Bot
-import com.runemate.zombiepirates.getAntiPkManager
-import com.runemate.zombiepirates.getCombatManager
+import com.runemate.game.api.hybrid.local.Camera
+import com.runemate.zombiepirates.*
 
 
 class Starting : TaskState() {
@@ -44,6 +43,14 @@ class Starting : TaskState() {
     }
 
     override fun onStart() {
-        log.debug("Starting Task")
+        log.info("Starting Task")
+        setInventoryAndEquipment()
+    }
+
+    fun setInventoryAndEquipment() {
+        bot.getInventoryManager().inventory = BotConfig.inventoryItems
+        bot.getEquipmentManager().setEquipment()
+        Camera.setZoom(0.1, 0.2)
+        log.info("Inventory and Equipment set")
     }
 }

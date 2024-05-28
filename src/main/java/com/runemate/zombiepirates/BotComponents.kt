@@ -18,11 +18,4 @@ class BotComponents(
     val antiPKManager = AntiPkManager()
     val equipmentManager = EquipmentManager()
 
-    val inventoryItems = mapOf(
-        Regex.getPattern("Looting bag") to 1,
-        Regex.getPattern("Blighted manta ray") to 6,
-        Pattern.compile("Blighted super restore.*\\(.*") to 1,
-        items.ringOfDueling to 1,
-        items.burningAmulet to 1
-    )
 }
