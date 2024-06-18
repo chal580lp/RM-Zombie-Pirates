@@ -1,6 +1,6 @@
 package com.runemate.common.traverse
 
-import com.runemate.common.RMLogger
+
 import com.runemate.common.util
 import com.runemate.game.api.hybrid.entities.details.Locatable
 import com.runemate.game.api.hybrid.local.hud.interfaces.ChatDialog
@@ -12,11 +12,11 @@ import com.runemate.game.api.hybrid.web.WebPath
 import com.runemate.game.api.hybrid.web.WebPathRequest
 import com.runemate.game.api.script.Execution
 import java.util.regex.Pattern
-
+import com.runemate.common.LoggerUtils.getLogger
 object Traverse {
 
     private val pathCache: HashMap<String, WebPath> = HashMap()
-    private val log: RMLogger = RMLogger.getLogger(this::class.java)
+    private val log = getLogger("Traverse")
 
     fun getPathDestination(
         destination: Locatable,

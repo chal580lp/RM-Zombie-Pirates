@@ -1,11 +1,12 @@
 package com.runemate.zombiepirates.state.task.advance
 
-import com.runemate.common.items
-import com.runemate.common.state.Task
+import com.runemate.common.item.items
+import com.runemate.common.framework.core.Task
 import com.runemate.common.traverse.BurningAmuletTraverse
 import com.runemate.common.util
 import com.runemate.game.api.hybrid.local.Wilderness
 import com.runemate.game.api.script.Execution
+import com.runemate.ui.DefaultUI
 
 class BurningAmuletTeleport : Task {
     override fun validate(): Boolean {
@@ -13,7 +14,7 @@ class BurningAmuletTeleport : Task {
     }
 
     override fun execute() {
-        println("Teleporting via Chaos Amulet")
+        DefaultUI.setStatus("Teleporting via Burning Amulet")
         if (BurningAmuletTraverse.traverse(BurningAmuletTraverse.Destination.ChaosTemple)) {
             Execution.delayUntil({ !Wilderness.isInWilderness() }, 1000)
         }

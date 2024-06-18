@@ -1,10 +1,6 @@
 package com.runemate.common.traverse
 
-import com.runemate.common.items
-import com.runemate.common.util
-import com.runemate.game.api.hybrid.entities.Item
-import com.runmate.common.traverse.ItemTraverse
-import java.util.regex.Pattern
+import com.runemate.common.item.items
 
 
 object DuelingRingTraverse : ItemTraverse() {

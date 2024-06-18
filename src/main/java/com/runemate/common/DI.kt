@@ -1,16 +1,16 @@
 package com.runemate.common
 
-import com.runemate.game.api.hybrid.Environment
 import com.runemate.game.api.hybrid.input.direct.DirectInput
 import com.runemate.game.api.hybrid.input.direct.MenuAction
 import com.runemate.game.api.hybrid.local.hud.interfaces.InterfaceComponent
 import com.runemate.game.api.script.framework.listeners.EngineListener
 import java.util.*
+import com.runemate.common.LoggerUtils.getLogger
 
 object DI : EventListener, EngineListener {
-    const val LIMIT: Int = 8
-    val log : RMLogger = RMLogger.getLogger(this::class.java)
 
+    private val log = getLogger("DI")
+    private const val LIMIT: Int = 8
     private var actionsThisTick = 0
     private var tick = 0
 
@@ -33,4 +33,5 @@ object DI : EventListener, EngineListener {
         tick++
         actionsThisTick = 0
     }
+
 }

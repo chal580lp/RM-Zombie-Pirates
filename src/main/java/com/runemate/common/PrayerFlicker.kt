@@ -1,5 +1,7 @@
 package com.runemate.common
 
+import com.runemate.common.LoggerUtils.getLogger
+import com.runemate.common.framework.core.bot.BotConfig
 import com.runemate.game.api.hybrid.input.direct.MenuAction
 import com.runemate.game.api.hybrid.input.direct.MenuOpcode
 import com.runemate.game.api.hybrid.local.hud.interfaces.InterfaceComponent
@@ -10,14 +12,25 @@ import com.runemate.game.api.script.framework.listeners.EngineListener
 import java.util.Arrays
 import java.util.regex.Pattern
 
-class PrayerFlicker : EngineListener {
-    private val log: RMLogger = RMLogger.getLogger(this::class.java)
-    companion object {
-        private val TOGGLE_ACTION = Pattern.compile("^(Dea|A)ctivate$")
-    }
+data class PrayerFlickerConfig(var botConfig: BotConfig)
+
+object PrayerFlicker : EngineListener {
+    private val log = getLogger("PrayerFlicker")
+    private val TOGGLE_ACTION = Pattern.compile("^(Dea|A)ctivate$")
 
     private var activePrayers: Array<Prayer> = arrayOf()
     private var quickPray = false
+
+    private lateinit var config: PrayerFlickerConfig
+
+    fun initialize(botConfig: BotConfig) {
+        config = PrayerFlickerConfig(botConfig)
+    }
+
+//    private  val directInput: Boolean by BotConfigDelegate(
+//        getter = { config.botConfig.directInput },
+//        setter = { config.botConfig.directInput = it }
+//    )
 
     private fun getQuickPrayerToggle(): InterfaceComponent? {
         return Interfaces.newQuery().containers(160).types(InterfaceComponent.Type.CONTAINER)
@@ -33,10 +46,10 @@ class PrayerFlicker : EngineListener {
     }
 
     fun setActivePrayers(vararg _activePrayers: Prayer) {
-        if (!Arrays.equals(_activePrayers, activePrayers)) {
+        if (!_activePrayers.contentEquals(activePrayers)) {
             log.debug("Setting active prayers ${Arrays.toString(_activePrayers)}")
         }
-        activePrayers = _activePrayers as Array<Prayer>
+        activePrayers = arrayOf(*_activePrayers)
         quickPray = false
     }
 
@@ -45,39 +58,42 @@ class PrayerFlicker : EngineListener {
     }
 
     fun setQuickPrayers(vararg _activePrayers: Prayer) {
-        if (!Arrays.equals(_activePrayers, activePrayers)) {
-            log.debug("Setting quick prayers ${Arrays.toString(_activePrayers)}")
+        if (!_activePrayers.contentEquals(activePrayers)) {
+            log.debug("Setting quick prayers ${_activePrayers.contentToString()}")
         }
         Prayer.setQuickPrayers(*_activePrayers)
-        activePrayers = _activePrayers as Array<Prayer>
+        activePrayers = arrayOf(*_activePrayers)
         quickPray = true
     }
 
     override fun onTickStart() {
         try {
-            if (quickPray) {
-                val interfaceT = getQuickPrayerToggle()
-                if (interfaceT == null) {
-                    log.error("No quick prayer toggle")
-                } else {
-                    if (Prayer.getActivePrayers().isNotEmpty())
-                        directInputQuickPrayer(interfaceT)
-                    Execution.delay(10, 16)
-                    if (getActivePrayers().isNotEmpty())
-                        directInputQuickPrayer(interfaceT)
-                    return
+            when {
+                quickPray -> {
+                    val interfaceT = getQuickPrayerToggle()
+                    if (interfaceT == null) {
+                        log.error("No quick prayer toggle")
+                    } else {
+                        if (Prayer.getActivePrayers().isNotEmpty())
+                            directInputQuickPrayer(interfaceT)
+                        Execution.delay(10, 16)
+                        if (getActivePrayers().isNotEmpty())
+                            directInputQuickPrayer(interfaceT)
+                    }
+                }
+                else -> {
+                    // turn off
+                    for (p in Prayer.getActivePrayers()) {
+                        DI.send(MenuAction.forInterfaceComponent(p.component, 0, MenuOpcode.CC_OP))
+                    }
+                    // flick
+                    for (p in getActivePrayers()) {
+                        DI.send(MenuAction.forInterfaceComponent(p.component, 0, MenuOpcode.CC_OP))
+                    }
                 }
             }
-            // turn off
-            for (p in Prayer.getActivePrayers()) {
-                DI.send(MenuAction.forInterfaceComponent(p.component, 0, MenuOpcode.CC_OP))
-            }
-            // flick
-            for (p in getActivePrayers()) {
-                DI.send(MenuAction.forInterfaceComponent(p.component, 0, MenuOpcode.CC_OP))
-            }
         } catch (e: Exception) {
-            log.error("Prayer flicker " + e)
+            log.error("Prayer flicker $e")
         }
     }
 

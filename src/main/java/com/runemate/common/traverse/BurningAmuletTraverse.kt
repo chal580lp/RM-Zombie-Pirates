@@ -1,7 +1,6 @@
 package com.runemate.common.traverse
 
-import com.runemate.common.items
-import com.runmate.common.traverse.ItemTraverse
+import com.runemate.common.item.items
 
 object BurningAmuletTraverse : ItemTraverse() {
 

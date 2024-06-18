@@ -1,22 +1,26 @@
-package com.runmate.common.traverse
+package com.runemate.common.traverse
 
-import com.runemate.common.RMLogger
+import com.runemate.common.LoggerUtils.getLogger
+
 import com.runemate.common.util
+import com.runemate.game.api.hybrid.local.hud.interfaces.Bank
 import com.runemate.game.api.hybrid.local.hud.interfaces.ChatDialog
 import com.runemate.game.api.hybrid.local.hud.interfaces.Equipment
-import com.runemate.game.api.hybrid.local.hud.interfaces.InterfaceComponent
 import com.runemate.game.api.hybrid.local.hud.interfaces.Inventory
 import com.runemate.game.api.hybrid.local.hud.interfaces.SpriteItem
 import com.runemate.game.api.hybrid.region.Players
-import com.runemate.game.api.hybrid.util.Regex
-import com.runemate.game.api.osrs.local.hud.interfaces.ControlPanelTab
 import com.runemate.game.api.script.Execution
 import java.util.regex.Pattern
 
 open class ItemTraverse {
-    private val log: RMLogger = RMLogger.getLogger(this::class.java)
+    private val log = getLogger("ItemTraverse")
 
     fun doTraverseLoop(item: Pattern?, interact: String): Boolean {
+        if (Bank.isOpen()) {
+            Bank.close()
+            Execution.delayUntil({ !Bank.isOpen() }, 2000)
+            return false
+        }
         val region = Players.getLocal()?.serverPosition?.containingRegionId ?: run {
             log.debug("Region is null, cannot proceed.")
             return false
@@ -48,10 +52,12 @@ open class ItemTraverse {
 
         if (spriteItem.interact(interact)) {
             Execution.delayUntil({ ChatDialog.isOpen() }, 600)
+            Execution.delay(300)
             if (ChatDialog.isOpen()) {
                 ChatDialog.getOption(1)?.select()
             }
             Execution.delayUntil({ Players.getLocal()?.serverPosition?.containingRegionId != region }, 2500)
+            Execution.delay(300)
         }
 
         // Check for items that have appeared in the inventory and match previously equipped item IDs

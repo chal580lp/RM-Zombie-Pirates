@@ -1,243 +1,268 @@
 package com.runemate.common
 
-import com.runemate.common.state.di.injected
-import com.runemate.game.api.hybrid.entities.Item
-import com.runemate.game.api.hybrid.input.direct.MenuAction
+import com.runemate.common.LoggerUtils.getLogger
+import com.runemate.common.framework.core.TaskMachine
+import com.runemate.common.framework.core.addons.BotState
+import com.runemate.common.framework.core.bot.BotConfig
+import com.runemate.common.item.*
 import com.runemate.game.api.hybrid.local.hud.interfaces.*
-import com.runemate.game.api.hybrid.region.GameObjects
 import com.runemate.game.api.osrs.local.hud.interfaces.LootingBag
 import com.runemate.game.api.script.Execution
-import com.runemate.game.api.script.framework.listeners.events.MenuInteractionEvent
-import com.runemate.zombiepirates.Bot
-import java.util.logging.Logger
-import java.util.regex.Pattern
 
+enum class EquipmentStatus {
+    ALL_EQUIPPED,
+    ITEMS_TO_EQUIP,
+    ITEMS_MISSING
+}
 
-class BankManager() {
+class BankManager<TSettings : BotConfig>(var bot: TaskMachine<TSettings>) {
 
-    fun needToBank(): Boolean {
+    private val log = getLogger("BankManager")
 
-        return false
+    fun withdrawInventory(items: List<SetItem>): Boolean {
+        log.info("Withdrawing items: ${items.size}")
+        setWithdrawModeToItem()
+
+        val bankItemMap = getBankItemMap(items) ?: return false
+
+        val missingItems = getMissingItems(items, bankItemMap)
+        if (missingItems.isNotEmpty()) {
+            log.debug("Missing required items")
+            failedToFindAdequateItem(*missingItems.toTypedArray())
+            return false
+        }
+
+        return withdrawItems(bankItemMap)
     }
 
-    val bot : Bot by injected()
+    private fun setWithdrawModeToItem() {
+        if (Bank.getWithdrawMode() == Bank.WithdrawMode.NOTE) {
+            log.debug("Setting withdraw mode to ITEM")
+            Bank.setWithdrawMode(Bank.WithdrawMode.ITEM)
+        }
+    }
 
-    private val log: RMLogger = RMLogger.getLogger(this::class.java)
+    private fun getBankItemMap(items: List<SetItem>): Map<SetItem, SpriteItem?>? {
+        return items.associateWith { item ->
+            findBankItem(item)?.also { bankItem ->
+                if (bankItem.name?.let { Restore.isRestore(it) } == true) {
+                    if (!Restore.isMaxDose(bankItem.name ?: "")) {
+                        log.debug("Restore ${bankItem.name} is not max dosage in bank.")
+                        failedToFindAdequateItem(item)
+                        return null
+                    }
+                }
+            }
+        }
+    }
 
-    fun withdrawInventory(items: List<InventoryItem>): Boolean {
-        log.info("Withdrawing items: ${items.size}")
+    private fun getMissingItems(items: List<SetItem>, bankItemMap: Map<SetItem, SpriteItem?>): List<SetItem> {
+        return items.filter { item ->
+            item.required && item.name !in InventoryManager.unRequiredItems && bankItemMap[item] == null
+        }
+    }
 
-        items.forEach { item ->
-            val name = item.name
+    private fun withdrawItems(bankItemMap: Map<SetItem, SpriteItem?>) : Boolean {
+        bankItemMap.forEach { (setItem, spriteItem) ->
+            if (bot.isPaused) return false
+            if (spriteItem == null) return@forEach
+            if (Inventory.isFull()) return false
 
-            log.debug("Checking inventory and equipment for item: ${name.pattern()}")
-
-            // Check if the item is in the inventory
-            val inInventory = Inventory.contains(name)
-            // Check if the item is in the equipment
-            val inEquipment = Equipment.contains(name)
-            // Get the quantity of the item in the inventory
-            val quantityInInventory = Inventory.getQuantity(name)
-
-            log.debug("Item ${name.pattern()} is in inventory: $inInventory")
-            log.debug("Item ${name.pattern()} is in equipment: $inEquipment")
-            log.debug("Item ${name.pattern()} quantity in inventory: $quantityInInventory")
-
-            // Determine if we need to withdraw the item
-            val needsWithdrawal = !inInventory && !inEquipment || (item.amount > 1 && quantityInInventory < item.amount)
+            val name = spriteItem.name ?: return@forEach
+            log.debug("Checking inventory and equipment for item: $name")
+            val quantityInInventory = getQuantityInInventory(setItem)
+            val amountToWithdraw = if (setItem.quantity > 1) setItem.quantity - quantityInInventory else 1
+            val needsWithdrawal =
+                    !isItemInInventoryOrEquipment(setItem)
+                    || amountToWithdraw > 1
 
             if (needsWithdrawal) {
-                // Find the bank item, considering numbered items
-                val bankItem = findBankItem(item)
-
-                // If no bank item is found, handle the failure case
-                if (bankItem == null) {
-                    if (!item.withdrawRequired) {
-                        log.info("Can't find ${name.pattern()} but it is not required.")
-                        return@forEach
-                    }
-                    log.info("Failed to find ${name.pattern()} in bank.")
-                    bot.pause("Failed to find ${name.pattern()} in bank.")
-                    return false
+                if (amountToWithdraw == 0) {
+                    log.warn("You are trying to withdraw 0 of item: $name")
+                    return@forEach
                 }
+                log.debug("Withdrawing ${spriteItem.name} Quantity: $amountToWithdraw")
+                Bank.withdraw(spriteItem, amountToWithdraw)
 
-                // Calculate the amount to withdraw
-                val amountToWithdraw = if (item.amount > 1) item.amount - quantityInInventory else 1
-
-                // Attempt to withdraw the item from the bank
-                log.debug("Withdrawing ${bankItem.definition?.name} AMOUNT: $amountToWithdraw")
-                Bank.withdraw(bankItem, amountToWithdraw)
-
-                // Verify the item was successfully withdrawn
                 val itemWithdrawn = Execution.delayUntil({
-                    Inventory.contains(name) && Inventory.getQuantity(name) >= item.amount
-                }, 1200)
+                    Inventory.contains(spriteItem.id) && Inventory.getQuantity(spriteItem.id) >= setItem.quantity
+                }, 3000)
 
                 if (!itemWithdrawn) {
-                    log.debug("Failed to withdraw ${name.pattern()}, attempting once more")
-                    // If the first attempt fails, try withdrawing again
-                    if (!Bank.withdraw(bankItem, amountToWithdraw)) return false
+                    log.debug("Failed to withdraw $name, attempting once more")
+                    if (!Bank.withdraw(spriteItem, amountToWithdraw)) return false
                 }
             }
         }
         return true
     }
 
+    private fun failedToFindAdequateItem(vararg item: SetItem): Boolean {
+        item.forEach { log.debug("Failed to find adequate item: ${it.name}") }
+        log.debug("Activating Ge State")
+        bot.setCurrentState(BotState.GEState)
+        return false
+    }
 
-    private fun findBankItem(item: InventoryItem): SpriteItem? {
+    private fun isItemInInventoryOrEquipment(item: SetItem): Boolean {
+        val pattern = item.invPattern
+        val equipPattern = item.bankPattern
+        return Inventory.contains(pattern)|| Equipment.contains(equipPattern)
+    }
+
+    private fun getQuantityInInventory(item: SetItem): Int {
+        val pattern = item.invPattern
+        val x = Inventory.getQuantity(pattern)
+        val y = Inventory.getQuantity(item.name)
+        if (x != y) {
+            log.debug("Pattern '{}' doesn't match '{}' quantity in inventory. {}-{}", pattern, item.name,x,y)
+        }
+//        log.debug("Item $pattern quantity in inventory: $x")
+        return maxOf(x, y)
+    }
+
+    private fun findBankItem(item: SetItem): SpriteItem? {
         // Handle items with patterns like "Blighted super restore.*\\(.*\\)"
-        if (isNumberedItem(item.name)) {
-            // Query the bank for items matching the pattern directly from item.name
-            val matchingItems = Bank.newQuery().names(item.name).results().toList() // Convert to List
-            val highestOrLowestNumberedItem = findHighestOrLowestNumberedItem(matchingItems, item.name)
-            if (highestOrLowestNumberedItem != null) {
-                return highestOrLowestNumberedItem
+        if (item.isNumbered) {
+            log.debug("Item '{}' is numbered (ID:{})", item.name, item.id)
+            // Create a pattern to match the item name with any number in parentheses
+            val pattern = item.numberPattern
+            //log.debug("Generated pattern for item '{}': '{}'", item.name, pattern)
+            val allItems = Bank.newQuery().names(pattern).results().toList()
+            if (allItems.isEmpty()) {
+                log.debug("Failed to find any items matching pattern: '{}'", pattern)
+                return null
             }
+            val findHighest: Boolean = item.isRestore || item.isBoost
+            log.debug("Pattern '{}' found: {} '{}'", pattern, allItems.size, allItems.map { it.name })
+            return findHighestOrLowestNumberedItem(allItems, findHighest)
         }
 
-        // Query the bank for the item by ID DEBUG PURPOSES
-        val tempById = Bank.newQuery().ids(item.id).results().firstOrNull().also {
-            if (it == null) log.debug("Failed to find ${item.name} in bank with ID query.")
-        }
-
-        // Query the bank for the item by name DEBUG PURPOSES
-        val tempByName = Bank.newQuery().names(item.name).placeholder(false).results().firstOrNull().also {
-            if (it == null) log.debug("Failed to find ${item.name.pattern()} in bank with Name query.")
-        }
+        // Query the bank for the item by ID and name
+        val itemById = Bank.newQuery().ids(item.id).placeholder(false).results().firstOrNull()
+        val itemByName = Bank.newQuery().names(item.name).placeholder(false).results().firstOrNull()
 
         // Return the bank item found by ID or name
-        return tempById ?: tempByName
+        return itemById ?: itemByName ?: run {
+            log.debug("Failed to find ${item.name} or ID ${item.id} in bank.")
+            null
+        }
     }
 
-    private fun findHighestOrLowestNumberedItem(items: List<SpriteItem>, pattern: Pattern, findHighest: Boolean = true): SpriteItem? {
-        val matchingItems = items.filter {
-            it.definition?.name?.let { name -> pattern.matcher(name).matches() } == true
-        }
+    fun findHighestOrLowestNumberedItem(
+        items: List<SpriteItem>,
+        findHighest: Boolean = true
+    ): SpriteItem? {
 
-        // Log all matching items for debugging
-        matchingItems.forEach { spriteItem ->
-            log.debug("Matching item found: ${spriteItem.definition?.name}")
-        }
-
-        if (matchingItems.isNotEmpty()) {
-            val highestOrLowestNumberedItem = if (findHighest) {
-                // Select the item with the highest number in parentheses
-                matchingItems.maxByOrNull { spriteItem ->
-                    val matchResult = "\\((\\d+)\\)".toRegex().find(spriteItem.definition?.name ?: "")
-                    matchResult?.groupValues?.get(1)?.toInt() ?: 0
-                }
-            } else {
-                // Select the item with the lowest number in parentheses
-                matchingItems.minByOrNull { spriteItem ->
-                    val matchResult = "\\((\\d+)\\)".toRegex().find(spriteItem.definition?.name ?: "")
-                    matchResult?.groupValues?.get(1)?.toInt() ?: 0
-                }
+        return when {
+            items.isEmpty() -> {
+                log.warn("FUNCTIONAL FLOW ERROR: Failed to find any numbered items")
+                null
             }
-
-            if (highestOrLowestNumberedItem != null) {
-                log.debug("Selected ${if (findHighest) "highest" else "lowest"} numbered item: ${highestOrLowestNumberedItem.definition?.name}")
-                return highestOrLowestNumberedItem
+            findHighest -> {
+                val highestNumberedItem = items.maxByOrNull { spriteItem ->
+                    val matchResult = "\\d+".toRegex().find(spriteItem.name ?: "")
+                    matchResult?.groupValues?.get(0)?.toInt() ?: 0
+                }
+                log.debug("Selected highest numbered item: ${highestNumberedItem?.name}")
+                highestNumberedItem
             }
-            log.debug("Failed to find ${if (findHighest) "highest" else "lowest"} numbered item for pattern: $pattern")
-        } else {
-            log.debug("Failed to find any items matching pattern: $pattern")
-        }
-        return null
-    }
-
-    private fun isNumberedItem(itemName: Pattern): Boolean {
-        // Check if the item name matches a pattern with numbers in parentheses
-        return Pattern.compile(".*\\(.*\\).*").matcher(itemName.pattern()).find()
-    }
-
-
-    private fun checkWithdrawalSuccess(inventoryManager: InventoryManager): Boolean {
-        return inventoryManager.inventory.all { item ->
-            Inventory.contains(item.name) && Inventory.getQuantity(item.name) == item.amount
+            else -> {
+                val lowestNumberedItem = items.minByOrNull { spriteItem ->
+                    val matchResult = "\\d+".toRegex().find(spriteItem.name ?: "")
+                    matchResult?.groupValues?.get(0)?.toInt() ?: 0
+                }
+                log.debug("Selected lowest numbered item: ${lowestNumberedItem?.name}")
+                lowestNumberedItem
+            }
         }
     }
 
     fun shouldDepositInventory(inventoryManager: InventoryManager): Boolean {
-        val requiredItems = inventoryManager.inventory.map { it.name to it.id }.toSet()
-
-        // Check if there are items in the inventory that shouldn't be there
-        Inventory.getItems().forEach { item ->
-            val nameMatches = requiredItems.any { (name, _) -> name.matcher(item.definition?.name ?: "").matches() }
-            val idMatches = requiredItems.any { (_, id) -> id == item.id }
-
-            if (!nameMatches && !idMatches) {
-                log.debug("Item ${item.definition?.name} with ID ${item.id} shouldn't be in the inventory.")
-                return true
-            }
-        }
-
-        // Check if the required items are present in excess quantities
-        inventoryManager.inventory.forEach { requiredItem ->
-            if (!requiredItem.withdrawRequired) {
-                return@forEach
-            }
-
-            val matchingItemsByName = Inventory.getItems().filter { it.definition?.name?.let { name -> requiredItem.name.matcher(name).matches() } == true }
-            val matchingItemsById = Inventory.getItems().filter { it.id == requiredItem.id }
-            val totalQuantity = matchingItemsByName.sumOf { it.quantity } + matchingItemsById.sumOf { it.quantity }
-
-            // If the total quantity is more than required, return true
-            if (totalQuantity > requiredItem.amount) {
-                return true
-            }
-        }
-        return false
+        return getItemsToDeposit(inventoryManager).isNotEmpty()
     }
 
-    fun checkAndEquipItems(equipmentManager: EquipmentManager): Boolean {
-        val missingItems = equipmentManager.equipment.filterNot { Equipment.contains(it.name) }
+    fun depositUnwantedItems(inventoryManager: InventoryManager): Boolean {
+        val itemsToDeposit = getItemsToDeposit(inventoryManager)
 
-        if (missingItems.isEmpty()) {
-            log.debug("All equipment items are already equipped.")
+        if (itemsToDeposit.isEmpty()) {
+            log.debug("No items to deposit.")
             return true
         }
 
-        if (!Bank.open()) {
-            log.debug("Failed to open bank.")
-            return false
+        log.debug("Depositing unwanted items: {}", itemsToDeposit.map { Inventory.getItems(it.first) })
+        if (itemsToDeposit.size == Inventory.getItems().size) {
+            log.debug("All items in inventory are unwanted.")
+            return Bank.depositInventory()
         }
 
-        // Convert missing EquipmentItems to InventoryItems
-        val inventoryItemsToWithdraw = missingItems.map {
-            InventoryItem(it.name, it.id, 1, withdrawRequired = true)
+        itemsToDeposit.forEach { (itemId, quantity) ->
+            if (bot.isPaused) return false
+            if (!Bank.deposit(itemId, quantity)) {
+                log.debug("Failed to deposit item: {}", Inventory.getItems(itemId))
+                return false
+            }
         }
 
-        // Use withdrawInventory to withdraw the missing equipment items
-        if (!withdrawInventory(inventoryItemsToWithdraw)) {
-            log.debug("Failed to withdraw some equipment items.")
-            return false
-        }
-
-        missingItems.forEach { item ->
-            val inventoryItem = Inventory.newQuery().names(item.name).results().firstOrNull()
-            util.equip(inventoryItem)
-        }
-
+        log.debug("Deposited unwanted items successfully.")
         return true
     }
 
-    fun withdrawGear() {
+    private fun getItemsToDeposit(inventoryManager: InventoryManager): List<Pair<Int, Int>> {
+        val inventoryItems = inventoryManager.inventory
 
+        val itemsToDeposit = mutableListOf<Pair<Int, Int>>()
+
+        Inventory.getItems().forEach { item ->
+            val itemName = item.name.orEmpty()
+            val isInvItem = inventoryItems.any {
+                    it.invPattern.matcher(itemName).matches()
+                    || it.id == item.id
+            }
+            if (!isInvItem) {
+                itemsToDeposit.add(item.id to item.quantity)
+            } else {
+                val invItem = inventoryManager.inventory.find { it.invPattern.equals(itemName) || it.id == item.id }
+                if (invItem != null && item.quantity > invItem.quantity) {
+                    val excessQuantity = item.quantity - invItem.quantity
+                    itemsToDeposit.add(item.id to excessQuantity)
+                }
+            }
+        }
+        return itemsToDeposit
     }
 
-    fun equipGear() {
-
+    fun checkMissingEquipment(missingEquipment: List<SetItem>): List<SetItem> {
+        return missingEquipment.filter { findBankItem(it) == null }
     }
 
-    fun anyBanksVisible() : Boolean {
-        return !GameObjects.newQuery()
-            .names("Bank booth", "Bank chest")
-            .visible()
-            .results()
-            .any()
+    fun getMissingEquipment(missingEquipment: List<SetItem>): Map<SetItem, SpriteItem> {
+        return missingEquipment.mapNotNull { item ->
+            findBankItem(item)?.let { bankItem ->
+                item to bankItem
+            } ?: run {
+                log.debug("Failed to find item: {}", item)
+                null
+            }
+        }.toMap()
     }
 
-    fun emptyLootingBagDI() : Boolean {
+    fun withdrawEquipmentItems(items: Map<SetItem, SpriteItem?>): Boolean {
+        log.info("Withdrawing equipment items: {}", items)
+        setWithdrawModeToItem()
+
+        items.forEach { (setItem, spriteItem) ->
+            spriteItem?.let {
+                Bank.withdraw(it, setItem.quantity)
+                Execution.delayUntil({ Inventory.contains(it.id) }, 2000)
+            }
+        }
+
+        log.debug("Every equipment item has been withdrawn from bank!")
+        return true
+    }
+
+    fun emptyLootingBag(): Boolean {
         if (!Inventory.contains("Looting bag")) return false
         val lootingBag = Inventory.getItems("Looting bag").firstOrNull() ?: run {
             log.debug("Failed to find looting bag in inventory.")
@@ -245,18 +270,18 @@ class BankManager() {
         }
         lootingBag.interact("View")
         Execution.delayUntil({ LootingBag.isOpen() }, 1200)
-        val x = Interfaces.getAt(15,6) ?: run {
-            log.debug("Failed to find looting bag Deposit loot interface.")
+        val lootingBagInterface = Interfaces.getAt(15, 6)
+        val dismissInterface = Interfaces.getAt(15, 8)
+
+        if (lootingBagInterface == null || dismissInterface == null) {
+            log.debug("Failed to find looting bag interfaces.")
             return false
         }
-        //DI.send(MenuAction.forInterfaceComponent(x,"Deposit loot"))
-        x.interact("Deposit loot")
-        Execution.delayUntil({ LootingBag.isEmpty()}, 1200)
-        val y = Interfaces.getAt(15,8) ?: run {
-            log.debug("Failed to find looting bag Deposit loot interface.")
-            return false
-        }
-        y.interact("Dismiss")
+
+        lootingBagInterface.interact("Deposit loot")
+        Execution.delayUntil({ LootingBag.isEmpty() }, 2400)
+
+        dismissInterface.interact("Dismiss")
         Execution.delay(600)
         return true
     }

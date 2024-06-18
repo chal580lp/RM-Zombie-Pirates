@@ -1,47 +1,92 @@
 package com.runemate.common
 
+import com.runemate.common.LoggerUtils.getLogger
+import com.runemate.common.item.EnergyRestore
+import com.runemate.common.item.Food
+import com.runemate.common.item.Restore
+import com.runemate.common.item.isAvailable
+import com.runemate.game.api.hybrid.local.hud.interfaces.Health
+import com.runemate.game.api.hybrid.location.navigation.Traversal
+import com.runemate.game.api.osrs.local.hud.interfaces.Prayer
+import com.runemate.game.api.script.framework.AbstractBot
 import com.runemate.game.api.script.framework.listeners.EngineListener
-import com.runemate.game.api.script.framework.listeners.PlayerListener
-import java.util.logging.Logger
 
-class Consumeables(
-    private var minEat: Int,
-    private var isDharok: Boolean = false
-) : EngineListener, PlayerListener {
+@Suppress("unused")
+object Consumeables : EngineListener {
+    private const val TICK_PENALTY = 3
+    private lateinit var bot: AbstractBot //TODO:
+    private var minHealth: Int = 0
+    private var minPrayer: Int = 0
+    private var tickPenalty = 0
+    private var tick = 0
+    private val log = getLogger("Consumeables")
 
-    private val log: Logger = Logger.getLogger(Consumeables::class.java.name)
-
-    //constructor(bot: NeckBot<TSettings>, minEat: Int) : this(bot, minEat, false)
-
-    fun setDharok(isDharok: Boolean) {
-        this.isDharok = isDharok
+    fun initialize(bot: AbstractBot, minHealth: Int, minPrayer: Int) {
+        this.bot = bot
+        this.minHealth = minHealth
+        this.minPrayer = minPrayer
     }
 
-    fun setMinEat(minEat: Int) {
-        this.minEat = minEat
+    private fun checkAndConsume(): Boolean {
+        if (bot.isPaused) return false
+
+        when {
+            shouldEatFood() -> {
+                Food.eatAny()
+                applyTickPenalty()
+                return true
+            }
+            shouldRestorePrayer() -> {
+                Restore.restorePrayer()
+                applyTickPenalty()
+                return true
+            }
+            shouldDrinkStamina() -> {
+                if (Traversal.drinkStaminaEnhancer()) {
+                    applyTickPenalty()
+                    return true
+                }
+            }
+            Health.isPoisoned() -> {
+                if (Restore.isAntiPoisonAvailable()) {
+                    Restore.curePoison()
+                }
+            }
+        }
+
+        return false
     }
 
-//    private fun checkAndConsume() {
-//        //if (bot.isPaused) return
-//        if (Health.getCurrent() < minEat && !isDharok) {
-//            if (!Food.eatAny() || Food.countInventory() == 0) {
-//                if (Health.getCurrent() < minEat) {
-//                    log.debug("No food forced to restore hp: {} mineat: {}", Health.current, minEat)
-//                    //bot.forceState(NeckState.RESTORING)
-//                }
-//            }
-//        }
-//        if (Prayer.getPoints() < 5) {
-//            if (!Util.restorePrayer()) {
-//                log.debug("No prayer forced to restore")
-//                //bot.forceState(NeckState.RESTORING)
-//            }
-//        }
-//        if (Traversal.getRunEnergy() < 15) {
-//            Traversal.drinkStaminaEnhancer()
-//        }
-//        if (Health.isPoisoned()) {
-//            // if (!Util.curePoison()) {
-//        }
-//    }
+    private fun shouldEatFood(): Boolean {
+        return Health.getCurrent() < minHealth && Food.haveValidFood()
+    }
+
+    private fun shouldRestorePrayer(): Boolean {
+        return Prayer.getPoints() < minPrayer && Restore.isPrayerRestoreAvailable()
+    }
+
+    private fun shouldDrinkStamina(): Boolean {
+        return Traversal.getRunEnergy() < 15 && EnergyRestore.StaminaPotion.isAvailable()
+    }
+
+    private fun applyTickPenalty() {
+        tickPenalty = TICK_PENALTY
+    }
+
+     override fun onTickStart() {
+         if (!::bot.isInitialized) {
+             println("Consumeables is not initialized properly.")
+             return
+         }
+        tick++
+        if (tickPenalty > 0) {
+            tickPenalty--
+            return
+        }
+        if (checkAndConsume()){
+            log.debug("checkAndConsumed on tick: $tick")
+            tickPenalty++
+        }
+
+    }
 }

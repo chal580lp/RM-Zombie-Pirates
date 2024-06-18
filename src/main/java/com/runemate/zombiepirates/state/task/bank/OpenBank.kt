@@ -1,9 +1,8 @@
 package com.runemate.zombiepirates.state.task.bank
 
-import com.runemate.common.state.Task
+import com.runemate.common.framework.core.Task
 import com.runemate.game.api.hybrid.local.hud.interfaces.Bank
 import com.runemate.game.api.script.Execution
-import com.runemate.ui.DefaultUI
 
 class OpenBank : Task {
     override fun validate(): Boolean {
